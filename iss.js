@@ -10,15 +10,46 @@ const request = require('request');
 
 /////// body: {"ip":"24.72.139.57"}
 
+/****** nextISSTimesForMyLocation
+ * Orchestrates multiple API requests in order to determine the next 5 upcoming ISS fly overs for the user's current location.
+ * Input:
+ *   - A callback with an error or results.
+ * Returns (via Callback):
+ *   - An error, if any (nullable)
+ *   - The fly-over times as an array (null if error):
+ *     [ { risetime: <number>, duration: <number> }, ... ]
+ */
+
+
+const nextISSTimesForMyLocation = function(callback) {
+  fetchMyIP((error, ip) => {
+    if (error) {
+      return callback(error, null);
+    }
+
+    fetchCoordsByIP(ip, (error, place) => {
+      if (error) {
+        return callback(error, null);
+      }
+
+      fetchISSFlyOverTimes(place, (error, when) => {
+        if (error) {
+          return callback(error, null);
+        }
+        callback(null, when);
+      });
+    });
+  });
+};
+
+
+
+// # 1
 const fetchMyIP = function(callback) {
-
-
   request('https://api.ipify.org?format=json', (error, response, body) => {
 
-
     if (error) {
-      callback(`${error}`, null);
-      return; // exit the function
+      return callback(`${error}`, null);
     }
     if (response.statusCode !== 200) {
       callback(Error(`Status code ${response.statusCode} when fetching IP:${body}`), null);
@@ -27,9 +58,45 @@ const fetchMyIP = function(callback) {
 
     const data = JSON.parse(body);
     callback(null, data.ip);
-
   });
-
 };
 
-module.exports = { fetchMyIP };
+
+// # 2
+const fetchCoordsByIP = function(ip, callback) {
+  request(`https://freegeoip.app/json/?apikey=${ip}`
+    , (error, response, body) => {
+      if (error) {
+        return callback(`${error}`, null);
+      }
+      if (response.statusCode !== 200) {
+        callback(Error(`Status code ${response.statusCode} when fetching coordinates :${body}`), null);
+        return;
+      }
+      const data = JSON.parse(body);
+      let latLng = {
+        "latitude": data.latitude,
+        "longitude": data.longitude
+      };
+      callback(null, latLng);
+    });
+};
+
+// # 3
+const fetchISSFlyOverTimes = function(coords, callback) {
+  request(`https://iss-pass.herokuapp.com/json/?lat=${coords.latitude}&lon=${coords.longitude}`
+    , (error, response, body) => {
+      if (error) {
+        return callback(`${error}`, null);
+      }
+      if (response.statusCode !== 200) {
+        callback(Error(`Status code ${response.statusCode} when fetching coordinates :${body}`), null);
+        return;
+      }
+      const when = JSON.parse(body);
+      callback(null, when.response);
+    });
+};
+
+
+module.exports = { fetchMyIP, fetchCoordsByIP, fetchISSFlyOverTimes, nextISSTimesForMyLocation };
